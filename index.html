@@ -11,7 +11,7 @@
 <div class="grid"><label>Группа для просмотра<input id="filterGroup" placeholder="Например, МС-21"></label><label>День недели<select id="filterDay"><option value="">Все дни</option><option>Понедельник</option><option>Вторник</option><option>Среда</option><option>Четверг</option><option>Пятница</option><option>Суббота</option></select></label><label>Поиск по предмету, кабинету или учителю<input id="filterText" placeholder="Введите текст"></label></div>
 <div id="scheduleDisplay"></div></section>
 <section class="card" id="newsSection"><h2>Новости и объявления</h2><div id="newsDisplay"></div></section>
-<section class="card" id="moderator"><h2>Редактор для модераторов</h2><div id="login"><p class="muted">Войдите, чтобы редактировать расписание и объявления.</p><label>Пароль модератора<input id="password" type="password" inputmode="numeric" placeholder="Введите пароль"></label><button id="loginBtn">Войти</button><p id="loginError" style="display:none;color:#a83232">Неверный пароль.</p></div>
+<section class="card" id="moderator"><h2>Редактор для модераторов</h2><div id="login"><p class="muted">Войдите с учётной записью модератора Firebase.</p><label>Email модератора<input id="email" type="email" autocomplete="username" placeholder="moderator@example.com"></label><label>Пароль<input id="password" type="password" autocomplete="current-password" placeholder="Пароль учётной записи"></label><button id="loginBtn">Войти</button><p id="loginError" style="display:none;color:#a83232"></p></div>
 <div id="editor" hidden>
 <h3>Добавить расписание на день</h3><p class="muted">Выберите день и группу, затем заполните нужные строки. В каждой строке укажите предмет, кабинет и учителя. Номер урока проставлен автоматически — всего 8 уроков.</p>
 <div class="grid"><label>День недели<select id="editDay"><option>Понедельник</option><option>Вторник</option><option>Среда</option><option>Четверг</option><option>Пятница</option><option>Суббота</option></select></label><label>Группа<input id="editGroup" placeholder="Например, МС-21"></label><div></div></div>
@@ -21,35 +21,59 @@
 <hr style="border:0;border-top:1px solid var(--line);margin:24px 0">
 <h3>Добавить объявление</h3><label>Заголовок<input id="newsTitle" placeholder="Например, Изменение расписания"></label><label>Текст<textarea id="newsText" rows="3" placeholder="Текст объявления"></textarea></label><button id="addNews">Опубликовать объявление</button>
 <button id="logout" class="secondary">Выйти из режима модератора</button>
-<p class="muted">Важно: это демонстрационная версия. Данные сохраняются в браузере на этом устройстве, а пароль в статическом сайте не является надёжной защитой для публикации в интернете.</p>
+<p class="muted">Расписание и объявления синхронизируются через Firebase. Редактирование доступно только аккаунтам, UID которых добавлен администратором в список moderators.</p><p id="syncStatus" class="muted">Подключение к базе не настроено.</p>
 </div></section></main>
-<script>
-const PASSWORD="442579";
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+import { getDatabase, ref, onValue, set } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
+import { getAuth, signInWithEmailAndPassword, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+
+// ШАГ НАСТРОЙКИ: вставьте сюда конфигурацию своего Firebase Web App.
+const firebaseConfig = {
+  apiKey: "PASTE_YOUR_API_KEY_HERE",
+  authDomain: "PASTE_YOUR_PROJECT_ID_HERE.firebaseapp.com",
+  databaseURL: "PASTE_YOUR_DATABASE_URL_HERE",
+  projectId: "PASTE_YOUR_PROJECT_ID_HERE",
+  appId: "PASTE_YOUR_APP_ID_HERE"
+};
+const configReady = Object.values(firebaseConfig).every(v => v && !String(v).includes("PASTE_YOUR"));
 const days=["Понедельник","Вторник","Среда","Четверг","Пятница","Суббота"];
 const blankRows=()=>Array.from({length:8},(_,i)=>({number:i+1,subject:"",room:"",teacher:""}));
-const demo=[{day:"Понедельник",group:"МС-21",lessons:[{number:1,subject:"Математика",room:"305",teacher:"Иванов И. И."},{number:2,subject:"Материаловедение",room:"214",teacher:"Петрова А. С."}]}];
-let schedules=JSON.parse(localStorage.getItem("mgkSchedules8")||"null")||demo;
-let news=JSON.parse(localStorage.getItem("mgkNews8")||"null")||[{title:"Информация для студентов",text:"Здесь будут публиковаться новости и объявления колледжа."}];
 const $=id=>document.getElementById(id);
 const esc=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
-function save(){localStorage.setItem("mgkSchedules8",JSON.stringify(schedules));localStorage.setItem("mgkNews8",JSON.stringify(news))}
+let schedules=[], news=[], db=null, auth=null, currentUser=null, isModerator=false;
+function status(msg){$("syncStatus").textContent=msg}
 function renderSchedule(){
  const q=$("filterText").value.trim().toLowerCase(),g=$("filterGroup").value.trim().toLowerCase(),d=$("filterDay").value;
- const filtered=schedules.filter(s=>(!d||s.day===d)&&s.group.toLowerCase().includes(g)&&s.lessons.some(l=>[l.subject,l.room,l.teacher].some(v=>String(v).toLowerCase().includes(q))));
- $("scheduleDisplay").innerHTML=filtered.map(s=>`<div class="dayblock"><h3 class="daytitle">${esc(s.day)} · Группа ${esc(s.group)}</h3><div class="tablewrap"><table><thead><tr><th>№ урока</th><th>Предмет</th><th>Кабинет</th><th>Учитель</th></tr></thead><tbody>${s.lessons.filter(l=>l.subject||l.room||l.teacher).map(l=>`<tr><td class="lesson-no">${l.number}</td><td>${esc(l.subject||"—")}</td><td>${esc(l.room||"—")}</td><td>${esc(l.teacher||"—")}</td></tr>`).join("")}</tbody></table></div></div>`).join("")||'<p class="muted">Расписание не найдено.</p>';
+ const filtered=schedules.filter(s=>(!d||s.day===d)&&String(s.group||"").toLowerCase().includes(g)&&(!q||s.lessons.some(l=>[l.subject,l.room,l.teacher].some(v=>String(v||"").toLowerCase().includes(q)))));
+ $("scheduleDisplay").innerHTML=filtered.map(s=>`<div class="dayblock"><h3 class="daytitle">${esc(s.day)} · Группа ${esc(s.group)}</h3><div class="tablewrap"><table><thead><tr><th>№ урока</th><th>Предмет</th><th>Кабинет</th><th>Учитель</th></tr></thead><tbody>${(s.lessons||[]).filter(l=>l.subject||l.room||l.teacher).map((l,i)=>`<tr><td class="lesson-no">${Number(l.number)||i+1}</td><td>${esc(l.subject||"—")}</td><td>${esc(l.room||"—")}</td><td>${esc(l.teacher||"—")}</td></tr>`).join("")}</tbody></table></div></div>`).join("")||'<p class="muted">Расписание не найдено.</p>';
 }
 function renderNews(){$("newsDisplay").innerHTML=news.map(n=>`<div class="news-item"><h3>${esc(n.title)}</h3><p>${esc(n.text)}</p></div>`).join("")||'<p class="muted">Объявлений пока нет.</p>'}
-function buildRows(values=blankRows()){
- $("lessonRows").innerHTML=values.map((l,i)=>`<div class="entry"><div class="num">Урок ${i+1}</div><label>Предмет<input data-field="subject" data-row="${i}" value="${esc(l.subject)}" placeholder="Название предмета"></label><label>Кабинет<input data-field="room" data-row="${i}" value="${esc(l.room)}" placeholder="Например, 305"></label><label class="teacher">Учитель<input data-field="teacher" data-row="${i}" value="${esc(l.teacher)}" placeholder="Фамилия И. О."></label></div>`).join("");
+function buildRows(values=blankRows()){$("lessonRows").innerHTML=values.map((l,i)=>`<div class="entry"><div class="num">Урок ${i+1}</div><label>Предмет<input data-field="subject" data-row="${i}" value="${esc(l.subject)}" placeholder="Название предмета"></label><label>Кабинет<input data-field="room" data-row="${i}" value="${esc(l.room)}" placeholder="Например, 305"></label><label class="teacher">Учитель<input data-field="teacher" data-row="${i}" value="${esc(l.teacher)}" placeholder="Фамилия И. О."></label></div>`).join("")}
+function currentRows(){return blankRows().map((l,i)=>{let get=f=>$("lessonRows").querySelector(`[data-row="${i}"][data-field="${f}"]`).value.trim();return {number:i+1,subject:get("subject"),room:get("room"),teacher:get("teacher")}})}
+function renderManage(){$("manageDays").innerHTML=schedules.map((s,i)=>`<div class="news-item"><b>${esc(s.day)} · ${esc(s.group)}</b> — заполнено уроков: ${(s.lessons||[]).filter(l=>l.subject||l.room||l.teacher).length}<button class="danger" data-delete="${i}">Удалить расписание</button></div>`).join("")||'<p class="muted">Расписаний пока нет.</p>'}
+function refreshEditor(){if(isModerator){renderManage()}}
+if(!configReady){status("Сначала вставьте конфигурацию Firebase в index.html. Расписание пока не подключено к общей базе.");$("loginBtn").disabled=true;renderSchedule();renderNews();buildRows();}
+else {
+ try {
+  const app=initializeApp(firebaseConfig); db=getDatabase(app); auth=getAuth(app);
+  onValue(ref(db,"schedules"),snap=>{const v=snap.val();schedules=Array.isArray(v)?v:(v&&typeof v==="object"?Object.values(v):[]);renderSchedule();refreshEditor();status("Расписание синхронизировано с Firebase.")},err=>status("Ошибка чтения расписания: "+err.message));
+  onValue(ref(db,"announcements"),snap=>{const v=snap.val();news=Array.isArray(v)?v:(v&&typeof v==="object"?Object.values(v):[]);renderNews()},err=>status("Ошибка чтения объявлений: "+err.message));
+  onAuthStateChanged(auth,async user=>{
+   currentUser=user; isModerator=false;
+   if(user){try{const { get } = await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js");const snap=await get(ref(db,"moderators/"+user.uid));isModerator=snap.val()===true;}catch(e){status("Не удалось проверить права модератора: "+e.message)} }
+   $("login").hidden=!!user; $("editor").hidden=!(user&&isModerator);
+   if(user&&!isModerator){$("login").hidden=false;$("loginError").textContent="У аккаунта нет прав модератора. Обратитесь к администратору.";$("loginError").style.display="block";await signOut(auth)}
+   if(user&&isModerator){$("loginError").style.display="none";buildRows();renderManage();status("Вы вошли как модератор. Изменения будут видны всем посетителям.")}
+  });
+ }catch(e){status("Ошибка настройки Firebase: "+e.message)}
 }
-function currentRows(){return blankRows().map((l,i)=>{let get=f=>$(`lessonRows`).querySelector(`[data-row="${i}"][data-field="${f}"]`).value.trim();return {number:i+1,subject:get("subject"),room:get("room"),teacher:get("teacher")}})}
-function renderManage(){$("manageDays").innerHTML=schedules.map((s,i)=>`<div class="news-item"><b>${esc(s.day)} · ${esc(s.group)}</b> — заполнено уроков: ${s.lessons.filter(l=>l.subject||l.room||l.teacher).length}<button class="danger" data-delete="${i}">Удалить расписание</button></div>`).join("")||'<p class="muted">Расписаний пока нет.</p>'}
-$("loginBtn").onclick=()=>{if($("password").value===PASSWORD){$("login").hidden=true;$("editor").hidden=false;$("loginError").style.display="none";buildRows();renderManage()}else{$("loginError").style.display="block"}};
+$("loginBtn").onclick=async()=>{if(!auth)return;try{$("loginError").style.display="none";await signInWithEmailAndPassword(auth,$("email").value.trim(),$("password").value)}catch(e){$("loginError").textContent="Не удалось войти. Проверьте email и пароль, а также настройки Firebase Authentication.";$("loginError").style.display="block"}};
 $("password").onkeydown=e=>{if(e.key==="Enter")$("loginBtn").click()};
-$("saveDay").onclick=()=>{const day=$("editDay").value,group=$("editGroup").value.trim();if(!group){alert("Укажите группу.");return}const lessons=currentRows().filter(l=>l.subject||l.room||l.teacher);if(!lessons.length){alert("Заполните хотя бы одну строку урока.");return}const idx=schedules.findIndex(s=>s.day===day&&s.group.toLowerCase()===group.toLowerCase());const record={day,group,lessons};if(idx>=0)schedules[idx]=record;else schedules.push(record);save();renderSchedule();renderManage();alert("Расписание сохранено.")};
-$("manageDays").onclick=e=>{const b=e.target.closest("[data-delete]");if(!b)return;if(confirm("Удалить это расписание?")){schedules.splice(+b.dataset.delete,1);save();renderSchedule();renderManage()}};
-$("addNews").onclick=()=>{const title=$("newsTitle").value.trim(),text=$("newsText").value.trim();if(!title||!text){alert("Заполните заголовок и текст объявления.");return}news.unshift({title,text});save();renderNews();$("newsTitle").value="";$("newsText").value=""};
-$("logout").onclick=()=>{$("editor").hidden=true;$("login").hidden=false;$("password").value=""};
+$("saveDay").onclick=async()=>{if(!isModerator){alert("Войдите под аккаунтом модератора.");return}const day=$("editDay").value,group=$("editGroup").value.trim();if(!group){alert("Укажите группу.");return}const lessons=currentRows().filter(l=>l.subject||l.room||l.teacher);if(!lessons.length){alert("Заполните хотя бы одну строку урока.");return}const idx=schedules.findIndex(s=>s.day===day&&String(s.group).toLowerCase()===group.toLowerCase());const record={day,group,lessons};const updated=[...schedules];if(idx>=0)updated[idx]=record;else updated.push(record);try{await set(ref(db,"schedules"),updated);alert("Расписание сохранено и отправлено всем посетителям.")}catch(e){alert("Не удалось сохранить: "+e.message)}};
+$("manageDays").onclick=async e=>{const b=e.target.closest("[data-delete]");if(!b||!isModerator)return;if(confirm("Удалить это расписание?")){const updated=schedules.filter((_,i)=>i!==Number(b.dataset.delete));try{await set(ref(db,"schedules"),updated)}catch(e){alert("Не удалось удалить: "+e.message)}}};
+$("addNews").onclick=async()=>{if(!isModerator){alert("Войдите под аккаунтом модератора.");return}const title=$("newsTitle").value.trim(),text=$("newsText").value.trim();if(!title||!text){alert("Заполните заголовок и текст объявления.");return}try{await set(ref(db,"announcements"),[{title,text},...news]);$("newsTitle").value="";$("newsText").value=""}catch(e){alert("Не удалось опубликовать: "+e.message)}};
+$("logout").onclick=()=>{if(auth)signOut(auth)};
 $("filterGroup").oninput=renderSchedule;$("filterText").oninput=renderSchedule;$("filterDay").onchange=renderSchedule;
 buildRows();renderSchedule();renderNews();
 </script></body></html>
