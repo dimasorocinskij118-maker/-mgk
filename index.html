@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>МГК технологий машиностроения</title>
+<style>
+:root{--navy:#17365e;--blue:#285ca8;--line:#dce4ef;--ink:#243247}*{box-sizing:border-box}body{margin:0;font:16px/1.45 Arial,sans-serif;background:#f4f7fb;color:var(--ink)}header{background:linear-gradient(120deg,#142744,#285ca8);color:#fff;padding:25px max(18px,calc((100% - 1080px)/2))}header h1{margin:0;font-size:clamp(23px,4vw,32px)}header p{margin:5px 0 0;color:#dce8fa}nav{display:flex;gap:14px;flex-wrap:wrap;margin-top:18px}nav a{color:white;text-decoration:none}.wrap{max-width:1080px;margin:25px auto;padding:0 16px}.card{background:white;border:1px solid var(--line);border-radius:14px;padding:18px;margin-bottom:18px}.muted{color:#64748b;font-size:14px}h2{color:var(--navy);margin-top:0}.grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}label{display:block;font-size:13px;font-weight:bold;margin:8px 0}input,select,textarea{width:100%;font:inherit;border:1px solid #cbd5e1;border-radius:8px;padding:10px;background:white;color:var(--ink)}button{border:0;border-radius:8px;padding:10px 14px;background:var(--blue);color:white;font-weight:bold;cursor:pointer;margin:6px 6px 0 0}.secondary{background:#e8eef7;color:#233c5e}.danger{background:#a83232}.tablewrap{overflow-x:auto;border:1px solid var(--line);border-radius:10px}table{width:100%;border-collapse:collapse;min-width:650px}th,td{text-align:left;padding:11px 12px;border-bottom:1px solid #e5eaf2}th{background:#edf3fb;color:#24466f;font-size:13px}tr:last-child td{border-bottom:0}.lesson-no{font-weight:bold;color:var(--blue);text-align:center}.daytitle{margin:14px 0 8px;color:var(--navy)}.dayblock{margin-bottom:20px}.entry{display:grid;grid-template-columns:70px 1fr 1fr 1fr;gap:10px;align-items:end;border:1px solid var(--line);border-radius:10px;padding:10px;margin:8px 0}.entry .num{font-size:18px;font-weight:bold;color:var(--blue);padding:10px}.entry label{margin:0}.entry .room{grid-column:auto}.news-item{border-bottom:1px solid var(--line);padding:10px 0}.news-item:last-child{border:0}@media(max-width:700px){.grid{grid-template-columns:1fr}.entry{grid-template-columns:42px 1fr 1fr}.entry .teacher{grid-column:2/-1}.entry .num{padding:8px 0}}
+</style></head>
+<body>
+<header><h1>МГК технологий машиностроения</h1><p>Официальный информационный портал</p><nav><a href="#schedule">Расписание</a><a href="#newsSection">Новости</a><a href="#moderator">Редактор</a></nav></header>
+<main class="wrap">
+<section class="card" id="schedule"><h2>Расписание занятий</h2><p class="muted">Выберите день и группу, чтобы найти нужные занятия.</p>
+<div class="grid"><label>Группа для просмотра<input id="filterGroup" placeholder="Например, МС-21"></label><label>День недели<select id="filterDay"><option value="">Все дни</option><option>Понедельник</option><option>Вторник</option><option>Среда</option><option>Четверг</option><option>Пятница</option><option>Суббота</option></select></label><label>Поиск по предмету, кабинету или учителю<input id="filterText" placeholder="Введите текст"></label></div>
+<div id="scheduleDisplay"></div></section>
+<section class="card" id="newsSection"><h2>Новости и объявления</h2><div id="newsDisplay"></div></section>
+<section class="card" id="moderator"><h2>Редактор для модераторов</h2><div id="login"><p class="muted">Войдите, чтобы редактировать расписание и объявления.</p><label>Пароль модератора<input id="password" type="password" inputmode="numeric" placeholder="Введите пароль"></label><button id="loginBtn">Войти</button><p id="loginError" style="display:none;color:#a83232">Неверный пароль.</p></div>
+<div id="editor" hidden>
+<h3>Добавить расписание на день</h3><p class="muted">Выберите день и группу, затем заполните нужные строки. В каждой строке укажите предмет, кабинет и учителя. Номер урока проставлен автоматически — всего 8 уроков.</p>
+<div class="grid"><label>День недели<select id="editDay"><option>Понедельник</option><option>Вторник</option><option>Среда</option><option>Четверг</option><option>Пятница</option><option>Суббота</option></select></label><label>Группа<input id="editGroup" placeholder="Например, МС-21"></label><div></div></div>
+<div id="lessonRows"></div>
+<button id="saveDay">Сохранить расписание на этот день</button>
+<h3 style="margin-top:28px">Сохранённые расписания</h3><div id="manageDays"></div>
+<hr style="border:0;border-top:1px solid var(--line);margin:24px 0">
+<h3>Добавить объявление</h3><label>Заголовок<input id="newsTitle" placeholder="Например, Изменение расписания"></label><label>Текст<textarea id="newsText" rows="3" placeholder="Текст объявления"></textarea></label><button id="addNews">Опубликовать объявление</button>
+<button id="logout" class="secondary">Выйти из режима модератора</button>
+<p class="muted">Важно: это демонстрационная версия. Данные сохраняются в браузере на этом устройстве, а пароль в статическом сайте не является надёжной защитой для публикации в интернете.</p>
+</div></section></main>
+<script>
+const PASSWORD="442579";
+const days=["Понедельник","Вторник","Среда","Четверг","Пятница","Суббота"];
+const blankRows=()=>Array.from({length:8},(_,i)=>({number:i+1,subject:"",room:"",teacher:""}));
+const demo=[{day:"Понедельник",group:"МС-21",lessons:[{number:1,subject:"Математика",room:"305",teacher:"Иванов И. И."},{number:2,subject:"Материаловедение",room:"214",teacher:"Петрова А. С."}]}];
+let schedules=JSON.parse(localStorage.getItem("mgkSchedules8")||"null")||demo;
+let news=JSON.parse(localStorage.getItem("mgkNews8")||"null")||[{title:"Информация для студентов",text:"Здесь будут публиковаться новости и объявления колледжа."}];
+const $=id=>document.getElementById(id);
+const esc=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+function save(){localStorage.setItem("mgkSchedules8",JSON.stringify(schedules));localStorage.setItem("mgkNews8",JSON.stringify(news))}
+function renderSchedule(){
+ const q=$("filterText").value.trim().toLowerCase(),g=$("filterGroup").value.trim().toLowerCase(),d=$("filterDay").value;
+ const filtered=schedules.filter(s=>(!d||s.day===d)&&s.group.toLowerCase().includes(g)&&s.lessons.some(l=>[l.subject,l.room,l.teacher].some(v=>String(v).toLowerCase().includes(q))));
+ $("scheduleDisplay").innerHTML=filtered.map(s=>`<div class="dayblock"><h3 class="daytitle">${esc(s.day)} · Группа ${esc(s.group)}</h3><div class="tablewrap"><table><thead><tr><th>№ урока</th><th>Предмет</th><th>Кабинет</th><th>Учитель</th></tr></thead><tbody>${s.lessons.filter(l=>l.subject||l.room||l.teacher).map(l=>`<tr><td class="lesson-no">${l.number}</td><td>${esc(l.subject||"—")}</td><td>${esc(l.room||"—")}</td><td>${esc(l.teacher||"—")}</td></tr>`).join("")}</tbody></table></div></div>`).join("")||'<p class="muted">Расписание не найдено.</p>';
+}
+function renderNews(){$("newsDisplay").innerHTML=news.map(n=>`<div class="news-item"><h3>${esc(n.title)}</h3><p>${esc(n.text)}</p></div>`).join("")||'<p class="muted">Объявлений пока нет.</p>'}
+function buildRows(values=blankRows()){
+ $("lessonRows").innerHTML=values.map((l,i)=>`<div class="entry"><div class="num">Урок ${i+1}</div><label>Предмет<input data-field="subject" data-row="${i}" value="${esc(l.subject)}" placeholder="Название предмета"></label><label>Кабинет<input data-field="room" data-row="${i}" value="${esc(l.room)}" placeholder="Например, 305"></label><label class="teacher">Учитель<input data-field="teacher" data-row="${i}" value="${esc(l.teacher)}" placeholder="Фамилия И. О."></label></div>`).join("");
+}
+function currentRows(){return blankRows().map((l,i)=>{let get=f=>$(`lessonRows`).querySelector(`[data-row="${i}"][data-field="${f}"]`).value.trim();return {number:i+1,subject:get("subject"),room:get("room"),teacher:get("teacher")}})}
+function renderManage(){$("manageDays").innerHTML=schedules.map((s,i)=>`<div class="news-item"><b>${esc(s.day)} · ${esc(s.group)}</b> — заполнено уроков: ${s.lessons.filter(l=>l.subject||l.room||l.teacher).length}<button class="danger" data-delete="${i}">Удалить расписание</button></div>`).join("")||'<p class="muted">Расписаний пока нет.</p>'}
+$("loginBtn").onclick=()=>{if($("password").value===PASSWORD){$("login").hidden=true;$("editor").hidden=false;$("loginError").style.display="none";buildRows();renderManage()}else{$("loginError").style.display="block"}};
+$("password").onkeydown=e=>{if(e.key==="Enter")$("loginBtn").click()};
+$("saveDay").onclick=()=>{const day=$("editDay").value,group=$("editGroup").value.trim();if(!group){alert("Укажите группу.");return}const lessons=currentRows().filter(l=>l.subject||l.room||l.teacher);if(!lessons.length){alert("Заполните хотя бы одну строку урока.");return}const idx=schedules.findIndex(s=>s.day===day&&s.group.toLowerCase()===group.toLowerCase());const record={day,group,lessons};if(idx>=0)schedules[idx]=record;else schedules.push(record);save();renderSchedule();renderManage();alert("Расписание сохранено.")};
+$("manageDays").onclick=e=>{const b=e.target.closest("[data-delete]");if(!b)return;if(confirm("Удалить это расписание?")){schedules.splice(+b.dataset.delete,1);save();renderSchedule();renderManage()}};
+$("addNews").onclick=()=>{const title=$("newsTitle").value.trim(),text=$("newsText").value.trim();if(!title||!text){alert("Заполните заголовок и текст объявления.");return}news.unshift({title,text});save();renderNews();$("newsTitle").value="";$("newsText").value=""};
+$("logout").onclick=()=>{$("editor").hidden=true;$("login").hidden=false;$("password").value=""};
+$("filterGroup").oninput=renderSchedule;$("filterText").oninput=renderSchedule;$("filterDay").onchange=renderSchedule;
+buildRows();renderSchedule();renderNews();
+</script></body></html>
